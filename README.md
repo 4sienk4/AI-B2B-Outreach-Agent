@@ -12,7 +12,7 @@ The workflow is built modularly to ensure high-quality data extraction and natur
 
 * **Discovery Layer**: Custom JavaScript logic that identifies sitemaps and prioritizes News/Blog sections to ensure the outreach references the latest company updates.
 * **Extraction Layer**: Leverages Firecrawl to bypass anti-bot measures and convert dynamic HTML into clean Markdown, optimized for LLM context windows.
-* **Generation Layer**: A multi-stage Gemini 2.5 Flash pipeline that first detects the language and extracts sales hooks, then drafts a professional, non-spammy email in the target language.
+* **Generation Layer**: A multi-stage Gemini 2.5 Flash pipeline that first detects the language (English/Polish, more to add in the future) and extracts sales hooks, then drafts a professional, non-spammy email in the target language.
 
 ## Tech Stack
 * **Orchestration**: n8n (Modular Workflow)
