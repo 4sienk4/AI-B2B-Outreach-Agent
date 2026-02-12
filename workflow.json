@@ -1,0 +1,394 @@
+{
+  "name": "Personalized Outreach",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI Cold Email Generator",
+        "formDescription": "Enter the domain of your chosen company and AI will create a personalized email for it.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "domain"
+            }
+          ]
+        },
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        64,
+        144
+      ],
+      "id": "0a328331-9b34-4db0-9429-3f76db3de2c4",
+      "name": "Input: Company Domain",
+      "webhookId": "37f6282a-915f-473b-a198-2f7f516a498f"
+    },
+    {
+      "parameters": {
+        "url": "={{`https://${$json[\"domain\"]}/sitemap.xml`}}",
+        "responseFormat": "string",
+        "options": {}
+      },
+      "name": "Get Sitemap (XML)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        256,
+        144
+      ],
+      "id": "8f8ea7bb-1d44-4f8d-84a8-afa72a6e3c0d",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "name": "Parse XML to JSON",
+      "type": "n8n-nodes-base.xml",
+      "typeVersion": 1,
+      "position": [
+        464,
+        144
+      ],
+      "id": "c259e4d6-01be-4cac-9a43-a44359219253",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. KONFIGURACJA\n// Upewnij się, że ta nazwa pasuje do Twojego pierwszego noda!\nconst inputNodeName = 'Input: Company Domain';\n\nconst items = $input.all();\n\n// 2. WYCIĄGANIE DOMENY (Dla fallbacku)\nlet domain = \"google.com\"; \ntry {\n    // Próba pobrania z inputu\n    const inputData = $(inputNodeName).first();\n    if (inputData && inputData.json.domain) {\n        domain = inputData.json.domain;\n    }\n} catch (e) {\n    // Próba pobrania z linków sitemapy\n    if (items.length > 0 && items[0].json.loc) {\n        try {\n            domain = new URL(items[0].json.loc).hostname;\n        } catch(err) {}\n    }\n}\n\n// 3. CZYSZCZENIE LISTY LINKÓW\n// Pobieramy linki i wyrzucamy puste oraz kolejne sitemapy (.xml)\nconst allUrls = items\n  .map(item => item.json.loc)\n  .filter(url => url && typeof url === 'string');\n\nconst pageUrls = allUrls.filter(url => !url.endsWith('.xml'));\n\nlet bestUrl = null;\n\n// 4. LOGIKA WYSZUKIWANIA (PL + EN)\nif (pageUrls.length > 0) {\n    \n    // Lista słów kluczowych (priorytetowe sekcje)\n    const keywords = [\n        // EN\n        '/blog', '/news', '/press', '/insights', '/articles',\n        // PL\n        'aktualnosci', 'aktualności', 'media', 'biuro-prasowe', 'wiedza', 'artykuly', 'centrum-prasowe'\n    ];\n\n    // Sprawdzamy, czy któryś URL zawiera słowo kluczowe\n    // .toLowerCase() zapewnia, że wielkość liter nie ma znaczenia\n    bestUrl = pageUrls.find(url => keywords.some(k => url.toLowerCase().includes(k)));\n    \n    // Jeśli nie ma sekcji newsowej, bierzemy po prostu pierwszy działający link HTML\n    if (!bestUrl) bestUrl = pageUrls[0];\n}\n\n// 5. BEZPIECZNY FALLBACK (Gdy sitemapa zawiedzie)\nif (!bestUrl) {\n    // Czyścimy domenę ze śmieci typu https:// czy slashe\n    const cleanDomain = domain.replace('https://', '').replace('http://', '').replace(/\\/$/, '');\n    \n    // Zamiast zgadywać \"/news\", wchodzimy na STRONĘ GŁÓWNĄ.\n    // To najbezpieczniejsza opcja - Firecrawl i tak znajdzie tam tekst,\n    // a na głównej zazwyczaj są bannery z nowościami.\n    bestUrl = `https://${cleanDomain}`; \n}\n\nreturn {\n  scrapeUrl: bestUrl\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        144
+      ],
+      "id": "036a085e-b99d-4ae8-96a6-1c4b7777977b",
+      "name": "Smart Link Selector (JS)"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert B2B Sales Researcher.\nBelow is the content of the latest news/page from a prospect company.\n\nPAGE CONTENT:\n\"\"\"\n{{ $json[\"data\"][\"markdown\"] }}\n\"\"\"\n\nYOUR TASK:\n1. Analyze the text deeply.\n2. DETECT THE LANGUAGE of the article (e.g., \"English\", \"Polish\", \"German\").\n3. Prepare data for a Cold Email IN THE SAME LANGUAGE as the article (e.g., if the article is in Polish, the summary and hooks must be in Polish).\n\nReturn the response STRICTLY as valid JSON (no markdown formatting like ```json) with the following fields:\n\n{\n  \"detected_language\": \"The detected language (e.g. English or Polish)\",\n  \"summary\": \"One sentence summary of what they announced\",\n  \"hook_1\": \"Casual opening referencing the news\",\n  \"hook_2\": \"More business-oriented hook referencing the news\",\n  \"company_context\": \"Brief explanation of what the company does based on the text\"\n}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1152,
+        144
+      ],
+      "id": "8937cf8b-02f8-4083-8e56-2fd94f59fb05",
+      "name": "AI Analyst (Research)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vAi5C6GR40fzac1B",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert B2B Copywriter specializing in Cold Emailing.\nWrite a short, natural email to a Marketing Manager at this company.\n\nRESEARCH DATA:\n{{ JSON.stringify($json) }}\n\nLANGUAGE INSTRUCTION:\nWrite this email in: \n(CRITICAL: If the detected language is English, write in English. If Polish, write in Polish).\n\nGUIDELINES:\n1. Subject Line: Short, intriguing, referencing the news.\n2. Opening: Use \"hook_1\" from the data to break the ice.\n3. Body: Smoothly transition to offering help with scaling sales (or insert your value proposition here).\n4. CTA: Ask for a quick coffee/chat next week.\n5. Tone: Professional but casual, concise (max 3-4 sentences).\n6. Do not use ** in topics\n\nReturn ONLY the email content (Subject and Body)."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        144
+      ],
+      "id": "31118903-2002-4ac5-a9e1-f50a548a39bb",
+      "name": "AI Copywriter (Drafting)",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "vAi5C6GR40fzac1B",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "Discovery & Routing\nDescription: Captures target domain and autonomously identifies the best source of information (News/Blog/Press) using sitemap analysis and smart fallback logic.",
+        "height": 336,
+        "width": 832,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c55b7c6e-09ad-4810-8761-ec9d7c2d5ada",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Advanced Data Extraction\nDescription: Leverages Firecrawl to scrape dynamic web content and convert HTML into clean Markdown, bypassing anti-bot protections.",
+        "height": 336,
+        "width": 256
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        848,
+        0
+      ],
+      "id": "019d0301-d925-4146-9e70-3a3a59d3e707",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "AI Analysis & Generation\nDescription: Multi-stage LLM pipeline: Detects language, extracts sales hooks, generates hyper-personalized B2B email drafts using Google Gemini and saves generated email in a dedicated spreadsheed.",
+        "height": 336,
+        "width": 1040,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "2511d28f-57b5-44bc-8ab2-6be91ca62c9d",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pobieramy surowy tekst odpowiedzi z Gemini Analityka\n// (Sprawdź, czy ścieżka content.parts[0].text pasuje do Twojego inputu - na screenie wygląda, że tak)\nconst rawText = $input.item.json.content.parts[0].text;\n\n// Czyścimy go z formatowania Markdown (tych ```json)\nconst cleanText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();\n\n// Zamieniamy tekst na prawdziwy obiekt JSON\ntry {\n  const jsonData = JSON.parse(cleanText);\n  return jsonData;\n} catch (e) {\n  // Jakby coś poszło nie tak, zwracamy oryginał, żeby widzieć błąd\n  return { error: \"Nie udało się sparsować JSON\", raw: rawText };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        144
+      ],
+      "id": "3604f34a-5a84-4180-8bb8-b03833c3ea86",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1cLLTm3xyqdCEBzKploZhI5o4vh0vYC_p0wmOOQ_e3Is",
+          "mode": "list",
+          "cachedResultName": "n8n outreach agent",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cLLTm3xyqdCEBzKploZhI5o4vh0vYC_p0wmOOQ_e3Is/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Logs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1cLLTm3xyqdCEBzKploZhI5o4vh0vYC_p0wmOOQ_e3Is/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "wygenerowany mail": "={{ $json.content.parts[0].text }}",
+            "domena": "={{ $('Input: Company Domain').item.json.domain }}",
+            "data": "={{ $now.format('yyyy-MM-dd HH:mm') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "data",
+              "displayName": "data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "domena",
+              "displayName": "domena",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "wygenerowany mail",
+              "displayName": "wygenerowany mail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        144
+      ],
+      "id": "95f986ff-ad91-4392-8d03-69b6950021c1",
+      "name": "Save data to spreadsheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "bEKuuPknKOjQXNUV",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "scrape",
+        "url": "={{ $json.scrapeUrl }}",
+        "requestOptions": {}
+      },
+      "type": "@mendable/n8n-nodes-firecrawl.firecrawl",
+      "typeVersion": 1,
+      "position": [
+        928,
+        144
+      ],
+      "id": "ea0dbdfd-a8b7-45d9-80f6-9245a2af9674",
+      "name": "Scrape a url and get its content",
+      "credentials": {
+        "firecrawlApi": {
+          "id": "TpEy8fqkyEIksNep",
+          "name": "Firecrawl account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Input: Company Domain": {
+      "main": [
+        [
+          {
+            "node": "Get Sitemap (XML)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sitemap (XML)": {
+      "main": [
+        [
+          {
+            "node": "Parse XML to JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse XML to JSON": {
+      "main": [
+        [
+          {
+            "node": "Smart Link Selector (JS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Smart Link Selector (JS)": {
+      "main": [
+        [
+          {
+            "node": "Scrape a url and get its content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analyst (Research)": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Copywriter (Drafting)": {
+      "main": [
+        [
+          {
+            "node": "Save data to spreadsheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Copywriter (Drafting)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape a url and get its content": {
+      "main": [
+        [
+          {
+            "node": "AI Analyst (Research)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8e8ae6dd-37b0-4ee1-8888-8ffa9efd01af",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1210a0589fc0eef529df546f0c53500ccaf8711af2341e2838e3eb7de57cdb8c"
+  },
+  "id": "OSKRzLyFxocSiRYu",
+  "tags": []
+}
