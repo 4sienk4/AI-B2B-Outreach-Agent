@@ -3,6 +3,7 @@
 ![Project Workflow](workflow.png)
 
 An automated n8n agent designed to transform any company domain into a hyper-personalized sales pitch by analyzing real-time web data.
+The workflow runs in a Dockerized n8n instance.
 
 ## Overview
 This system replaces manual prospect research. It autonomously crawls company websites, extracts core value propositions, and drafts unique "hooks" for cold outreach in under 30 seconds.
